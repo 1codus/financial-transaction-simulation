@@ -1,7 +1,0 @@
-### 계좌 생성
-POST http://localhost:8080/api/accounts?userId=1
-Content-Type: application/json
-
-{
-    "accountType": "CHECKING"
-}
