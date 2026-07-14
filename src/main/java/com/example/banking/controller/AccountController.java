@@ -5,6 +5,7 @@ import com.example.banking.dto.response.AccountResponse;
 import com.example.banking.service.AccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,13 +20,13 @@ public class AccountController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AccountResponse createAccount(
-            @RequestParam Long userId,
+            @AuthenticationPrincipal Long userId,
             @RequestBody AccountCreateRequest request) {
         return accountService.createAccount(userId, request);
     }
 
     @GetMapping
-    public List<AccountResponse> getAccounts(@RequestParam Long userId) {
+    public List<AccountResponse> getAccounts(@AuthenticationPrincipal Long userId) {
         return accountService.getAccounts(userId);
     }
 }
