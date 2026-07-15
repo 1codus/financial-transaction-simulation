@@ -19,4 +19,20 @@ public class GlobalExceptionHandler {
                         "message", e.getMessage()
                 ));
     }
+
+    @ExceptionHandler(CustomException.class)
+    public ResponseEntity<Map<String, String>> handleCustomException(CustomException e){
+        HttpStatus status = switch (e.getErrorCode()){
+            case ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case ACCOUNT_FROZEN, ACCESS_DENIED -> HttpStatus.FORBIDDEN;
+            case INSUFFICIENT_BALANCE, INVALID_AMOUNT -> HttpStatus.BAD_REQUEST;
+        };
+
+        return ResponseEntity
+                .status(status)
+                .body(Map.of(
+                        "errorCode", e.getErrorCode().getCode(),
+                        "message", e.getMessage()
+                ));
+    }
 }
