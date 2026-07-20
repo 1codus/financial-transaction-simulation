@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:banking_test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 60
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+jwt:
+  secret: dGVzdC1zZWNyZXQta2V5LWZvci1qdW5pdC10ZXN0LW9ubHktZG8tbm90LXVzZS1pbi1wcm9k

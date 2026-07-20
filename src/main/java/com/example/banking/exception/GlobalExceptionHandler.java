@@ -25,7 +25,8 @@ public class GlobalExceptionHandler {
         HttpStatus status = switch (e.getErrorCode()){
             case ACCOUNT_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case ACCOUNT_FROZEN, ACCESS_DENIED -> HttpStatus.FORBIDDEN;
-            case INSUFFICIENT_BALANCE, INVALID_AMOUNT -> HttpStatus.BAD_REQUEST;
+            case INSUFFICIENT_BALANCE, INVALID_AMOUNT,SAME_ACCOUNT_TRANSFER -> HttpStatus.BAD_REQUEST;
+            case CONCURRENT_UPDATE_CONFLICT -> HttpStatus.CONFLICT;
         };
 
         return ResponseEntity
