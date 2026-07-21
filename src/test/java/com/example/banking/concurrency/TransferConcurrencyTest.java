@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.springframework.test.context.TestPropertySource;
+import com.example.banking.dto.response.TransferResponse;
 
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -94,8 +95,7 @@ class TransferConcurrencyTest {
 
         long elapsed = runConcurrently(THREAD_COUNT, () -> {
             try {
-                transactionService.transfer(userId, transferRequest());
-                success.incrementAndGet();
+                transactionService.transfer(userId, transferRequest(), java.util.UUID.randomUUID().toString());                success.incrementAndGet();
             } catch (Exception e) {
                 fail.incrementAndGet();
             }
@@ -118,8 +118,7 @@ class TransferConcurrencyTest {
 
         long elapsed = runConcurrently(THREAD_COUNT, () -> {
             try {
-                transactionService.transferWithOptimisticLock(userId, transferRequest());
-                success.incrementAndGet();
+                transactionService.transferWithOptimisticLock(userId, transferRequest(), java.util.UUID.randomUUID().toString());                success.incrementAndGet();
             } catch (Exception e) {
                 fail.incrementAndGet();
             }
@@ -130,6 +129,44 @@ class TransferConcurrencyTest {
 
         System.out.printf("[낙관적 락+재시도/After] 소요시간=%dms, 성공=%d, 실패=%d, 기대잔액=%s, 실제잔액=%s%n",
                 elapsed, success.get(), fail.get(), expected, actual);
+
+        assertThat(actual).isEqualByComparingTo(expected);
+    }
+
+    @Test
+    @DisplayName("[Idempotency] 같은 키로 순차적으로 두 번 요청해도 이체는 한 번만 발생한다")
+    void sameIdempotencyKey_sequentialRetry_returnsExistingResult() {
+        String idempotencyKey = java.util.UUID.randomUUID().toString();
+
+        TransferResponse first = transactionService.transfer(userId, transferRequest(), idempotencyKey);
+        TransferResponse second = transactionService.transfer(userId, transferRequest(), idempotencyKey);
+
+        assertThat(second.getTransactionId()).isEqualTo(first.getTransactionId());
+        assertThat(second.getFromBalance()).isEqualByComparingTo(first.getFromBalance());
+
+        BigDecimal expected = INITIAL_BALANCE.subtract(TRANSFER_AMOUNT);
+        BigDecimal actual = getBalance(fromAccountId);
+        assertThat(actual).isEqualByComparingTo(expected);
+    }
+
+    @Test
+    @DisplayName("[Idempotency] 같은 키로 동시에 여러 번 요청해도 이체는 딱 한 번만 발생한다")
+    void sameIdempotencyKey_concurrentRequests_onlyTransfersOnce() throws InterruptedException {
+        String idempotencyKey = java.util.UUID.randomUUID().toString();
+        int requestCount = 50;
+
+        long elapsed = runConcurrently(requestCount, () -> {
+            try {
+                transactionService.transfer(userId, transferRequest(), idempotencyKey);
+            } catch (Exception ignored) {
+            }
+        });
+
+        BigDecimal expected = INITIAL_BALANCE.subtract(TRANSFER_AMOUNT);
+        BigDecimal actual = getBalance(fromAccountId);
+
+        System.out.printf("[동일 Idempotency-Key 동시 요청] 소요시간=%dms, 요청수=%d, 기대잔액=%s, 실제잔액=%s%n",
+                elapsed, requestCount, expected, actual);
 
         assertThat(actual).isEqualByComparingTo(expected);
     }
