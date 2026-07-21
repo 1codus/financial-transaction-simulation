@@ -10,8 +10,8 @@ public enum ErrorCode {
     INVALID_AMOUNT("INVALID_AMOUNT", "유효하지 않은 금액입니다."),
     ACCESS_DENIED("ACCESS_DENIED", "본인 소유의 계좌가 아닙니다."),
     SAME_ACCOUNT_TRANSFER("SAME_ACCOUNT_TRANSFER", "동일 계좌로는 이체할 수 없습니다."),
-    CONCURRENT_UPDATE_CONFLICT("CONCURRENT_UPDATE_CONFLICT", "동시 요청이 몰려 처리에 실패했습니다. 잠시 후 다시 시도해주세요.");
-
+    CONCURRENT_UPDATE_CONFLICT("CONCURRENT_UPDATE_CONFLICT", "동시 요청이 몰려 처리에 실패했습니다. 잠시 후 다시 시도해주세요."),
+    DUPLICATE_REQUEST("DUPLICATE_REQUEST","이미 처리된 요청입니다.");
 
     private final String code;
     private final String message;
