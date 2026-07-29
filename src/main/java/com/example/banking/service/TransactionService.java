@@ -8,14 +8,18 @@ import com.example.banking.dto.request.TransferRequest;
 import com.example.banking.dto.response.TransferResponse;
 import com.example.banking.exception.CustomException;
 import com.example.banking.exception.ErrorCode;
+import com.example.banking.external.ExternalFraudCheckService;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import java.util.concurrent.TimeUnit;
 import java.math.BigDecimal;
 import java.util.Optional;
 
@@ -28,18 +32,25 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final TransactionTemplate transactionTemplate;
+    private final ExternalFraudCheckService externalFraudCheckService;
+
+    private final RedissonClient redissonClient;
 
     public TransactionService(AccountRepository accountRepository,
                               TransactionRepository transactionRepository,
-                              PlatformTransactionManager transactionManager) {
+                              PlatformTransactionManager transactionManager,
+                              ExternalFraudCheckService externalFraudCheckService1,
+                              RedissonClient redissonClient) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.externalFraudCheckService = externalFraudCheckService1;
+        this.redissonClient = redissonClient;
     }
 
-    @Transactional
     public TransferResponse transfer(Long userId, TransferRequest request, String idempotencyKey) {
         validateAmount(request.getAmount());
+        externalFraudCheckService.checkFraud(request.getFromAccountId(), request.getAmount());
 
         Long fromId = request.getFromAccountId();
         Long toId = request.getToAccountId();
@@ -51,20 +62,49 @@ public class TransactionService {
         Long firstLockId = Math.min(fromId, toId);
         Long secondLockId = Math.max(fromId, toId);
 
-        Account first = accountRepository.findByIdWithLock(firstLockId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ACCOUNT_NOT_FOUND));
-        Account second = accountRepository.findByIdWithLock(secondLockId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ACCOUNT_NOT_FOUND));
+        RLock firstLock = redissonClient.getLock("account-lock:" + firstLockId);
+        RLock secondLock = redissonClient.getLock("account-lock:" + secondLockId);
 
-        Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
-        if (existing.isPresent()) {
-            return toResponse(existing.get());
+        boolean firstLocked = false;
+        boolean secondLocked = false;
+        try {
+            firstLocked = firstLock.tryLock(5, TimeUnit.SECONDS);
+            if (!firstLocked) {
+                throw new CustomException(ErrorCode.CONCURRENT_UPDATE_CONFLICT);
+            }
+            secondLocked = secondLock.tryLock(5, TimeUnit.SECONDS);
+            if (!secondLocked) {
+                throw new CustomException(ErrorCode.CONCURRENT_UPDATE_CONFLICT);
+            }
+
+            return transactionTemplate.execute(status -> {
+                Account first = accountRepository.findByIdWithLock(firstLockId)
+                        .orElseThrow(() -> new CustomException(ErrorCode.ACCOUNT_NOT_FOUND));
+                Account second = accountRepository.findByIdWithLock(secondLockId)
+                        .orElseThrow(() -> new CustomException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+                Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
+                if (existing.isPresent()) {
+                    return toResponse(existing.get());
+                }
+
+                Account fromAccount = fromId.equals(firstLockId) ? first : second;
+                Account toAccount = fromId.equals(firstLockId) ? second : first;
+
+                return doTransfer(userId, fromAccount, toAccount, request.getAmount(), idempotencyKey);
+            });
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CustomException(ErrorCode.CONCURRENT_UPDATE_CONFLICT);
+        } finally {
+            if (firstLocked) {
+                firstLock.unlock();
+            }
+            if (secondLocked) {
+                secondLock.unlock();
+            }
         }
-
-        Account fromAccount = fromId.equals(firstLockId) ? first : second;
-        Account toAccount = fromId.equals(firstLockId) ? second : first;
-
-        return doTransfer(userId, fromAccount, toAccount, request.getAmount(), idempotencyKey);
     }
 
     public TransferResponse transferWithOptimisticLock(Long userId, TransferRequest request, String idempotencyKey) {

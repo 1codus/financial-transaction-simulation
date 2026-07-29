@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.example.banking.external.ExternalServiceException;
 
 import java.util.Map;
 
@@ -45,5 +46,11 @@ public class GlobalExceptionHandler {
                         "errorCode", e.getErrorCode().getCode(),
                         "message", e.getMessage()
                 ));
+    }
+
+    @ExceptionHandler(ExternalServiceException.class)
+    public ResponseEntity<Map<String, String>> handleExternalServiceException(ExternalServiceException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("errorCode", "EXTERNAL_SERVICE_UNAVAILABLE", "message", e.getMessage()));
     }
 }
